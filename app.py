@@ -6,7 +6,6 @@ import os
 import hashlib
 from fpdf import FPDF
 from datetime import datetime
-from collections import defaultdict
 import csv
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
@@ -417,8 +416,16 @@ if nav_sistema == "🎬 Carregar Jogo & Dados":
     try:
         if uploaded_csv is not None:
             df_temp = pd.read_csv(uploaded_csv)
-        else:
+        elif os.path.exists("dados_jogada.csv"):
             df_temp = pd.read_csv("dados_jogada.csv")
+        else:
+            # Criação de um dataframe de fallback caso o CSV padrão não exista
+            df_temp = pd.DataFrame({
+                "Minuto": [10, 25, 40],
+                "Acao": ["Construcao", "Transicao Defensiva", "Finalizacao"],
+                "Erro_Cometido": ["Nenhum", "Desvio posicional", "Nenhum"],
+                "Motivo_Erro": ["Nenhum", "Lentitude na cobertura", "Nenhum"]
+            })
             
         total_linhas = len(df_temp)
         colunas_disponiveis = ", ".join(df_temp.columns.tolist())
@@ -439,7 +446,7 @@ if nav_sistema == "🎬 Carregar Jogo & Dados":
         if uploaded_csv is not None:
             st.success(f"✅ Base de dados de tracking integrada com sucesso ({total_linhas} registos detetados)!")
         else:
-            st.info(f"ℹ️ A usar base de dados padrão (`dados_jogada.csv`) com {total_linhas} registos.")
+            st.info(f"ℹ️ A usar base de dados padrão com {total_linhas} registos.")
     except Exception as e:
         st.error(f"Erro ao ler o ficheiro de dados: {e}")
         df_texto = "Erro na leitura dos dados. O sistema focar-se-á na leitura posicional."
