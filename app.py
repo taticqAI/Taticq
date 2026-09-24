@@ -16,12 +16,17 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- OCULTAR ELEMENTOS NATIVOS E DO GITHUB DA INTERFACE ---
+# --- OCULTAR TOTALMENTE QUALQUER BADGE, MENU OU BOTÃO DO STREAMLIT ---
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
     footer {visibility: hidden;}
+    .stAppDeployButton {display: none;}
+    div[data-testid="stStatusWidget"] {visibility: hidden;}
+    [data-testid="stDecoration"] {display: none;}
+    footer {visibility: hidden !important;}
+    header {visibility: hidden !important;}
     </style>
 """, unsafe_allow_html=True)
 
@@ -378,7 +383,6 @@ opcoes_navegacao = [
     "⚙️ Definições & Perfil"
 ]
 
-# Se o utilizador atual for o admin mestre, adiciona a opção de painel restrito
 if st.session_state.username.lower() == ADMIN_MASTER:
     opcoes_navegacao.append("👑 Painel Admin Master")
 
@@ -651,7 +655,6 @@ elif nav_sistema == "🛒 Comprar Relatórios Avulsos":
     with col_loja3:
         with st.container():
             st.markdown("### Pacote Master")
-            st.markdown("**40 Relatórios**")
             st.markdown("### R$ 447,00")
             st.markdown("---")
             if st.button("Comprar 40 Relatórios", key="comprar_pacote_master"):
@@ -693,9 +696,8 @@ elif nav_sistema == "👑 Painel Admin Master":
     st.markdown("---")
     
     utilizadores = listar_todos_utilizadores()
-    st.markdown(h:=f"### Total de Utilizadores Registados: `{len(utilizadores)}`")
+    st.markdown(f"### Total de Utilizadores Registados: `{len(utilizadores)}`")
     
-    # Criar tabela formatada com os utilizadores
     dados_tabela = []
     for u in utilizadores:
         dados_tabela.append({
