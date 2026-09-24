@@ -34,6 +34,9 @@ if API_KEY_GEMINI:
 else:
     modelo = None
 
+# --- UTILIZADOR ADMINISTRADOR MESTRE ---
+ADMIN_MASTER = "pedro1213"
+
 # --- FUNÇÃO DE HASH PARA SEGURANÇA DE SENHAS ---
 def fazer_hash_senha(password):
     return hashlib.sha256(password.encode()).hexdigest()
@@ -131,6 +134,14 @@ def obter_email_por_usuario(username):
     res = cursor.fetchone()
     conn.close()
     return res[0] if res and res[0] else None
+
+def listar_todos_utilizadores():
+    conn = sqlite3.connect('usuarios.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT username, email, creditos, plano FROM usuarios')
+    res = cursor.fetchall()
+    conn.close()
+    return res
 
 def guardar_historico(username, clube, escalao, foco, conteudo):
     conn = sqlite3.connect('usuarios.db')
@@ -277,7 +288,7 @@ if not st.session_state.logado:
                     st.warning("Insira o nome de utilizador.")
                 else:
                     email_cadastrado = obter_email_por_usuario(user_limpo_rec)
-                    if not email_cadastrado and user_limpo_rec.lower() != "admin":
+                    if not email_cadastrado and user_limpo_rec.lower() != ADMIN_MASTER:
                         st.error("Utilizador não encontrado na base de dados.")
                     else:
                         import random
@@ -366,6 +377,10 @@ opcoes_navegacao = [
     "🛒 Comprar Relatórios Avulsos",
     "⚙️ Definições & Perfil"
 ]
+
+# Se o utilizador atual for o admin mestre, adiciona a opção de painel restrito
+if st.session_state.username.lower() == ADMIN_MASTER:
+    opcoes_navegacao.append("👑 Painel Admin Master")
 
 nav_sistema = st.sidebar.radio("Navegação do Sistema:", opcoes_navegacao, key="radio_navegacao")
 
@@ -670,3 +685,41 @@ elif nav_sistema == "⚙️ Definições & Perfil":
         else:
             atualizar_senha_utilizador(st.session_state.username, nova_senha1)
             st.success("Palavra-passe atualizada com sucesso!")
+
+# --- MENU 6: PAINEL ADMIN MASTER (EXCLUSIVO PARA PEDRO1213) ---
+elif nav_sistema == "👑 Painel Admin Master":
+    st.title("👑 Painel de Administração Master - Taticq")
+    st.markdown("Área restrita de controlo global do SaaS. Aqui podes visualizar e gerir todos os utilizadores da plataforma.")
+    st.markdown("---")
+    
+    utilizadores = listar_todos_utilizadores()
+    st.markdown(h:=f"### Total de Utilizadores Registados: `{len(utilizadores)}`")
+    
+    # Criar tabela formatada com os utilizadores
+    dados_tabela = []
+    for u in utilizadores:
+        dados_tabela.append({
+            "Utilizador": u[0],
+            "E-mail": u[1] if u[1] else "Não registado",
+            "Créditos": u[2],
+            "Plano Ativo": u[3]
+        })
+    
+    df_users = pd.DataFrame(dados_tabela)
+    st.dataframe(df_users, use_container_width=True)
+    
+    st.markdown("---")
+    st.subheader("⚡ Gestão Rápida de Créditos de Utilizador")
+    
+    col_adm1, col_adm2, col_adm3 = st.columns(3)
+    with col_adm1:
+        user_alvo = st.selectbox("Selecionar Utilizador", [u[0] for u in utilizadores], key="select_user_target")
+    with col_adm2:
+        qtd_creditos_novos = st.number_input("Novo Valor de Créditos", min_value=0, max_value=1000, value=10, key="num_creditos_adm")
+    with col_adm3:
+        novo_plano_adm = st.selectbox("Alterar Plano", ["Gratuito (Trial)", "Analista Solo", "Clube Profissional", "Clube de Elite"], key="select_plano_adm")
+        
+    if st.button("Atualizar Conta do Utilizador", key="btn_atualizar_conta_adm"):
+        atualizar_dados_utilizador(user_alvo, qtd_creditos_novos, novo_plano_adm)
+        st.success(f"✅ Conta de `{user_alvo}` atualizada com sucesso! (Créditos: {qtd_creditos_novos} | Plano: {novo_plano_adm})")
+        st.rerun()
