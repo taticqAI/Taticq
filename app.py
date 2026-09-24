@@ -4,10 +4,6 @@ import google.generativeai as genai
 import sqlite3
 import os
 import hashlib
-import random
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from fpdf import FPDF
 from datetime import datetime
 from collections import defaultdict
@@ -37,42 +33,6 @@ if API_KEY_GEMINI:
     modelo = genai.GenerativeModel('gemini-3.5-flash')
 else:
     modelo = None
-
-# --- CONFIGURAÇÃO DE E-MAIL (SMTP) ---
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
-EMAIL_REMETENTE = "teu_email@gmail.com"
-EMAIL_SENHA = "tua_senha_de_aplicacao"
-
-def enviar_email_codigo(destinatario, codigo_verificacao):
-    try:
-        msg = MIMEMultipart()
-        msg['From'] = EMAIL_REMETENTE
-        msg['To'] = destinatario
-        msg['Subject'] = "Taticq - Código de Confirmação de E-mail"
-        
-        corpo = f"""
-        Olá!
-        Obrigado por se registar no Taticq.
-        Para ativar a sua conta, utilize o seguinte código de confirmação de e-mail:
-        
-        {codigo_verificacao}
-        
-        Insira este código na plataforma para concluir o seu registo.
-        
-        Atentamente,
-        Equipa Taticq
-        """
-        msg.attach(MIMEText(corpo, 'plain'))
-        
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-        server.starttls()
-        server.login(EMAIL_REMETENTE, EMAIL_SENHA)
-        server.sendmail(EMAIL_REMETENTE, destinatario, msg.as_string())
-        server.quit()
-        return True
-    except Exception as e:
-        return False
 
 # --- FUNÇÃO DE HASH PARA SEGURANÇA DE SENHAS ---
 def fazer_hash_senha(password):
@@ -257,13 +217,6 @@ if 'logado' not in st.session_state:
 if 'ultimo_pdf' not in st.session_state:
     st.session_state.ultimo_pdf = None
 
-if 'codigo_enviado' not in st.session_state:
-    st.session_state.codigo_enviado = False
-    st.session_state.codigo_gerado = ""
-    st.session_state.temp_user = ""
-    st.session_state.temp_pass = ""
-    st.session_state.temp_email = ""
-
 # --- TELA DE LOGIN / REGISTO / RECUPERAÇÃO ---
 if not st.session_state.logado:
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -291,64 +244,32 @@ if not st.session_state.logado:
                     st.error("Usuário ou senha incorretos.")
                     
         with aba_registo:
-            st.info("🎁 **Oferta de Boas-Vindas:** Ganhe 2 relatórios gratuitos ao registar-se com confirmação por e-mail!")
+            st.info("🎁 **Oferta de Boas-Vindas:** Crie a sua conta e ganhe 2 relatórios gratuitos imediatamente!")
+            new_user = st.text_input("Nome de Usuário (Sem espaços)", key="reg_user")
+            new_email = st.text_input("E-mail de Contato", key="reg_email")
+            new_pass = st.text_input("Palavra-passe (Mínimo 6 caracteres)", type="password", key="reg_pass")
             
-            if not st.session_state.codigo_enviado:
-                new_user = st.text_input("Nome de Usuário (Sem espaços)", key="reg_user")
-                new_email = st.text_input("E-mail para Confirmação", key="reg_email")
-                new_pass = st.text_input("Palavra-passe (Mínimo 6 caracteres)", type="password", key="reg_pass")
+            if st.button("Criar Conta Agora", key="btn_reg_imediato"):
+                user_limpo = new_user.strip()
+                email_limpo = new_email.strip()
                 
-                if st.button("Enviar Código de Verificação", key="btn_enviar_codigo"):
-                    user_limpo = new_user.strip()
-                    email_limpo = new_email.strip()
-                    
-                    if " " in user_limpo:
-                        st.warning("⚠️ O nome de utilizador não pode conter espaços em branco.")
-                    elif not user_limpo or not new_pass or not email_limpo:
-                        st.warning("Preencha todos os campos obrigatórios.")
-                    elif len(new_pass) < 6:
-                        st.warning("A palavra-passe deve ter pelo menos 6 caracteres.")
-                    elif "@" not in email_limpo or "." not in email_limpo:
-                        st.warning("Insira um endereço de e-mail válido.")
+                if " " in user_limpo:
+                    st.warning("⚠️ O nome de utilizador não pode conter espaços em branco.")
+                elif not user_limpo or not new_pass or not email_limpo:
+                    st.warning("Preencha todos os campos obrigatórios.")
+                elif len(new_pass) < 6:
+                    st.warning("A palavra-passe deve ter pelo menos 6 caracteres.")
+                elif "@" not in email_limpo or "." not in email_limpo:
+                    st.warning("Insira um endereço de e-mail válido.")
+                else:
+                    sucesso = criar_utilizador(user_limpo, new_pass, email_limpo)
+                    if sucesso:
+                        st.success("🎉 Conta criada com sucesso! Já pode fazer login na primeira aba.")
                     else:
-                        pin = str(random.randint(100000, 999900))
-                        st.session_state.codigo_gerado = pin
-                        st.session_state.temp_user = user_limpo
-                        st.session_state.temp_pass = new_pass
-                        st.session_state.temp_email = email_limpo
-                        
-                        enviado = enviar_email_codigo(email_limpo, pin)
-                        st.session_state.codigo_enviado = True
-                        
-                        if enviado:
-                            st.success(f"✅ Código de verificação enviado para `{email_limpo}`!")
-                        else:
-                            st.info(f"🔑 [Modo Local] Código de verificação gerado para teste: `{pin}`")
-                        st.rerun()
-            else:
-                st.success(f"Insira o código de 6 dígitos enviado para `{st.session_state.temp_email}`:")
-                codigo_digitado = st.text_input("Código de Verificação", key="input_pin_digitado")
-                
-                col_btn1, col_btn2 = st.columns(2)
-                with col_btn1:
-                    if st.button("Confirmar e Criar Conta", key="btn_confirmar_registo"):
-                        if codigo_digitado.strip() == st.session_state.codigo_gerado:
-                            sucesso = criar_utilizador(st.session_state.temp_user, st.session_state.temp_pass, st.session_state.temp_email)
-                            if sucesso:
-                                st.success("🎉 Conta criada e confirmada com sucesso! Já pode fazer login na primeira aba.")
-                                st.session_state.codigo_enviado = False
-                                st.rerun()
-                            else:
-                                st.error("Nome de utilizador já existe. Tente outro.")
-                        else:
-                            st.error("❌ Código de verificação incorreto. Tente novamente.")
-                with col_btn2:
-                    if st.button("Voltar / Alterar Dados", key="btn_voltar_reg"):
-                        st.session_state.codigo_enviado = False
-                        st.rerun()
+                        st.error("❌ Este nome de utilizador já existe. Escolha outro.")
 
         with aba_recuperar:
-            st.markdown("Esqueceu-se da palavra-passe? Insira o seu utilizador para gerar uma nova chave temporária.")
+            st.markdown("Esqueceu-se da palavra-passe? Insira o seu utilizador para gerar uma nova chave temporária de acesso.")
             user_rec = st.text_input("Nome de Usuário", key="rec_user_input")
             if st.button("Gerar Nova Senha Temporária", key="btn_rec_submit"):
                 user_limpo_rec = user_rec.strip()
@@ -359,6 +280,7 @@ if not st.session_state.logado:
                     if not email_cadastrado and user_limpo_rec.lower() != "admin":
                         st.error("Utilizador não encontrado na base de dados.")
                     else:
+                        import random
                         nova_temp = f"Taticq{random.randint(1000, 9999)}"
                         atualizar_senha_utilizador(user_limpo_rec, nova_temp)
                         st.success(f"✅ Nova palavra-passe temporária gerada com sucesso para o utilizador `{user_limpo_rec}`:")
@@ -395,7 +317,6 @@ tipo_analise_contexto = st.sidebar.selectbox(
     ["🎬 Partida Oficial / Adversário", "📋 Sessão de Treino / Exercício"]
 )
 
-# Campo do clube agora começa vazio para o utilizador inserir o nome da sua própria equipa
 clube = st.sidebar.text_input("Nome do Clube", "", key="input_clube", placeholder="Ex: FC Porto, Flamengo...")
 analista = st.sidebar.text_input("Nome do Analista", "", key="input_analista", placeholder="O teu nome")
 
