@@ -4,6 +4,10 @@ import google.generativeai as genai
 import sqlite3
 import os
 import hashlib
+import random
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from fpdf import FPDF
 from datetime import datetime
 from collections import defaultdict
@@ -16,6 +20,15 @@ st.set_page_config(
     layout="wide"
 )
 
+# --- OCULTAR ELEMENTOS NATIVOS E DO GITHUB DA INTERFACE ---
+st.markdown("""
+    <style>
+    #MainMenu {visibility: hidden;}
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
+    </style>
+""", unsafe_allow_html=True)
+
 # --- CONFIGURAÇÃO DA API DO GEMINI ---
 API_KEY_GEMINI = "AQ.Ab8RN6KjOzNnEovrneJGMP_kP6Lasz-yWg1NB5F4W4liJVwPYQ"
 
@@ -24,6 +37,9 @@ if API_KEY_GEMINI:
     modelo = genai.GenerativeModel('gemini-3.5-flash')
 else:
     modelo = None
+
+# --- CÓDIGO DE CONVITE MESTRE PARA O BETA FECHADO ---
+CODIGO_CONVITE_MESTRE = "TATICQ2026"
 
 # --- FUNÇÃO DE HASH PARA SEGURANÇA DE SENHAS ---
 def fazer_hash_senha(password):
@@ -38,6 +54,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS usuarios (
             username TEXT PRIMARY KEY,
             password TEXT,
+            email TEXT,
             creditos INTEGER DEFAULT 2,
             plano TEXT DEFAULT 'Gratuito (Trial)'
         )
@@ -55,6 +72,11 @@ def init_db():
         )
     ''')
     
+    try:
+        cursor.execute('ALTER TABLE usuarios ADD COLUMN email TEXT')
+    except sqlite3.OperationalError:
+        pass
+
     try:
         cursor.execute('ALTER TABLE usuarios ADD COLUMN plano TEXT DEFAULT "Gratuito (Trial)"')
     except sqlite3.OperationalError:
@@ -74,12 +96,12 @@ def verificar_utilizador(username, password):
     conn.close()
     return res if res else None
 
-def criar_utilizador(username, password):
+def criar_utilizador(username, password, email):
     try:
         conn = sqlite3.connect('usuarios.db')
         cursor = conn.cursor()
         senha_hash = fazer_hash_senha(password)
-        cursor.execute('INSERT INTO usuarios (username, password, creditos, plano) VALUES (?, ?, 2, ?)', (username, senha_hash, 'Gratuito (Trial)'))
+        cursor.execute('INSERT INTO usuarios (username, password, email, creditos, plano) VALUES (?, ?, ?, 2, ?)', (username, senha_hash, email, 'Gratuito (Trial)'))
         conn.commit()
         conn.close()
         return True
@@ -108,6 +130,14 @@ def obter_dados_utilizador(username):
     res = cursor.fetchone()
     conn.close()
     return res if res else (0, 'Desconhecido')
+
+def obter_email_por_usuario(username):
+    conn = sqlite3.connect('usuarios.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT email FROM usuarios WHERE username = ?', (username,))
+    res = cursor.fetchone()
+    conn.close()
+    return res[0] if res and res[0] else None
 
 def guardar_historico(username, clube, escalao, foco, conteudo):
     conn = sqlite3.connect('usuarios.db')
@@ -140,7 +170,6 @@ def gerar_pdf_relatorio(texto_relatorio, clube, analista, categoria):
     pdf = FPDF()
     pdf.add_page()
     
-    # Cabeçalho corporativo limpo
     pdf.set_font("Arial", 'B', 15)
     pdf.set_text_color(20, 40, 80)
     pdf.cell(0, 10, "TATICQ - RELATORIO DE INTELIGENCIA TATICA", 0, 1, 'C')
@@ -150,12 +179,10 @@ def gerar_pdf_relatorio(texto_relatorio, clube, analista, categoria):
     pdf.cell(0, 6, f"Clube: {clube} | Escalao: {categoria} | Analista: {analista}", 0, 1, 'C')
     pdf.ln(4)
     
-    # Linha divisoria
     pdf.set_draw_color(200, 200, 200)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(6)
     
-    # Limpeza rigorosa de markdown, tags e caracteres corrompidos
     texto_limpo = (
         texto_relatorio
         .replace("$$", "")
@@ -172,8 +199,6 @@ def gerar_pdf_relatorio(texto_relatorio, clube, analista, categoria):
     
     for linha in paragrafos:
         linha_tratada = linha.encode('latin-1', 'replace').decode('latin-1')
-        
-        # Detetar títulos principais para destacar em negrito e com cor corporativa
         if any(sec in linha_tratada.upper() for sec in ["IDENTIFICACAO", "SUMARIO", "DIAGNOSTICO", "MATRIZ", "PLANO", "OBJETIVO", "ANALISE", "AVALIACAO", "GRAU", "AJUSTES"]):
             pdf.ln(4)
             pdf.set_font("Arial", 'B', 11)
@@ -199,45 +224,71 @@ if 'logado' not in st.session_state:
 if 'ultimo_pdf' not in st.session_state:
     st.session_state.ultimo_pdf = None
 
-# --- TELA DE LOGIN / REGISTO ---
+# --- TELA DE LOGIN / REGISTO / RECUPERAÇÃO ---
 if not st.session_state.logado:
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         if os.path.exists("logo.png"):
             st.image("logo.png", width=140)
             
-        st.title("⚽ Taticq - Acesso à Plataforma")
+        st.title("⚽ Taticq - Acesso Restrito")
         st.markdown("Plataforma de alta performance para inteligência e análise de desempenho no futebol.")
         
-        aba_login, aba_registo = st.tabs(["🔑 Iniciar Sessão", "📝 Criar Conta Gratuita"])
+        aba_login, aba_registo, aba_recuperar = st.tabs(["🔑 Iniciar Sessão", "📝 Solicitar Acesso (Beta)", "🔄 Recuperar Senha"])
         
         with aba_login:
             user_input = st.text_input("Usuário", key="login_user")
             pass_input = st.text_input("Senha", type="password", key="login_pass")
             if st.button("Entrar", key="btn_login_submit"):
-                dados = verificar_utilizador(user_input, pass_input)
+                user_limpo = user_input.strip()
+                dados = verificar_utilizador(user_limpo, pass_input)
                 if dados is not None:
                     st.session_state.logado = True
-                    st.session_state.username = user_input
+                    st.session_state.username = user_limpo
                     st.success("Login efetuado com sucesso!")
                     st.rerun()
                 else:
                     st.error("Usuário ou senha incorretos.")
                     
         with aba_registo:
-            st.info("🎁 **Oferta de Boas-Vindas:** Ganhe 2 relatórios gratuitos ao registar-se!")
-            new_user = st.text_input("Escolha um Usuário", key="reg_user")
-            new_pass = st.text_input("Escolha uma Senha", type="password", key="reg_pass")
+            st.info("🔒 **Beta Fechado:** O registo requer um código de convite corporativo.")
+            new_user = st.text_input("Nome de Usuário (Sem espaços)", key="reg_user")
+            new_email = st.text_input("E-mail Corporativo", key="reg_email")
+            new_pass = st.text_input("Palavra-passe", type="password", key="reg_pass")
+            convite_input = st.text_input("Código de Convite", type="password", key="reg_convite")
+            
             if st.button("Registar Conta", key="btn_reg_submit"):
-                if new_user and new_pass:
-                    if len(new_pass) < 4:
-                        st.warning("A senha deve ter pelo menos 4 caracteres.")
-                    elif criar_utilizador(new_user, new_pass):
-                        st.success("Conta criada com sucesso! Faça login na aba ao lado.")
-                    else:
-                        st.error("Nome de usuário já existe. Escolha outro.")
+                user_limpo = new_user.strip()
+                if " " in user_limpo:
+                    st.warning("⚠️ O nome de utilizador não pode conter espaços em branco.")
+                elif not user_limpo or not new_pass or not new_email:
+                    st.warning("Preencha todos os campos obrigatórios.")
+                elif convite_input != CODIGO_CONVITE_MESTRE:
+                    st.error("❌ Código de convite inválido ou restrito. Contacte o administrador.")
+                elif len(new_pass) < 6:
+                    st.warning("A palavra-passe deve ter pelo menos 6 caracteres.")
+                elif criar_utilizador(user_limpo, new_pass, new_email.strip()):
+                    st.success("Conta criada com sucesso! Faça login na primeira aba.")
                 else:
-                    st.warning("Preencha todos os campos.")
+                    st.error("Nome de usuário já existe. Escolha outro.")
+
+        with aba_recuperar:
+            st.markdown("Esqueceu-se da palavra-passe? Insira o seu utilizador para gerar uma nova chave temporária.")
+            user_rec = st.text_input("Nome de Usuário", key="rec_user_input")
+            if st.button("Gerar Nova Senha Temporária", key="btn_rec_submit"):
+                user_limpo_rec = user_rec.strip()
+                if not user_limpo_rec:
+                    st.warning("Insira o nome de utilizador.")
+                else:
+                    email_cadastrado = obter_email_por_usuario(user_limpo_rec)
+                    if not email_cadastrado and user_limpo_rec.lower() != "admin":
+                        st.error("Utilizador não encontrado na base de dados.")
+                    else:
+                        nova_temp = f"Taticq{random.randint(1000, 9999)}"
+                        atualizar_senha_utilizador(user_limpo_rec, nova_temp)
+                        st.success(f"✅ Nova palavra-passe temporária gerada com sucesso para o utilizador `{user_limpo_rec}`:")
+                        st.code(nova_temp, language="text")
+                        st.info("Guarde esta senha temporária e faça login na primeira aba para depois a alterar nas definições.")
     st.stop()
 
 # --- APLICAÇÃO PRINCIPAL ---
