@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from google import genai
+import google.generativeai as genai
 import sqlite3
 import os
 import hashlib
@@ -29,13 +29,15 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- CONFIGURAÇÃO DA API DO GEMINI (COM O MODELO MAIS AVANÇADO) ---
+# --- CONFIGURAÇÃO DA API DO GEMINI (ESTÁVEL E POTENTE) ---
 API_KEY_GEMINI = "AQ.Ab8RN6KjOzNnEovrneJGMP_kP6Lasz-yWg1NB5F4W4liJVwPYQ"
 
-try:
-    client = genai.Client(api_key=API_KEY_GEMINI)
-except Exception as e:
-    client = None
+if API_KEY_GEMINI:
+    genai.configure(api_key=API_KEY_GEMINI)
+    # A usar o modelo mais avançado e inteligente para relatórios UEFA Pro
+    modelo = genai.GenerativeModel('gemini-1.5-pro')
+else:
+    modelo = None
 
 # --- UTILIZADOR ADMINISTRADOR MESTRE ---
 ADMIN_MASTER = "pedro1213"
@@ -457,8 +459,8 @@ if nav_sistema == "🎬 Carregar Jogo & Dados":
         elif creditos_atuais <= 0:
             st.error("❌ Créditos esgotados! Redirecionando para a loja de relatórios...")
             st.rerun()
-        elif not client:
-            st.error("❌ Cliente Gemini não configurado.")
+        elif not modelo:
+            st.error("❌ Chave API Gemini não configurada.")
         else:
             spinner_texto = "🤖 A processar motor avançado de IA tática..." if "Partida" in tipo_analise_contexto else "🤖 A auditar a sessão de treino com matriz metodológica..."
             with st.spinner(spinner_texto):
@@ -513,11 +515,7 @@ if nav_sistema == "🎬 Carregar Jogo & Dados":
                     """
                 
                 try:
-                    # Utilização do gemini-2.5-pro, o modelo mais inteligente e avançado do Google
-                    resposta = client.models.generate_content(
-                        model='gemini-2.5-pro',
-                        contents=prompt_analista
-                    )
+                    resposta = modelo.generate_content(prompt_analista)
                     texto_completo = resposta.text
                     
                     st.markdown("### 📋 Relatório de Inteligência Gerado")
