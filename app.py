@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import google.generativeai as genai
+from google import genai
 import sqlite3
 import os
 import hashlib
@@ -29,14 +29,13 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- CONFIGURAÇÃO DA API DO GEMINI ---
+# --- CONFIGURAÇÃO DA API DO GEMINI (CLIENTE MODERNO) ---
 API_KEY_GEMINI = "AQ.Ab8RN6IJ_NULtRWMOWoqz8MwoME1igBTSs0O7Izkqwq2TIEizw"
 
-if API_KEY_GEMINI:
-    genai.configure(api_key=API_KEY_GEMINI)
-    modelo = genai.GenerativeModel('gemini-1.5-pro')
-else:
-    modelo = None
+try:
+    client = genai.Client(api_key=API_KEY_GEMINI)
+except Exception as e:
+    client = None
 
 # --- UTILIZADOR ADMINISTRADOR MESTRE ---
 ADMIN_MASTER = "pedro1213"
@@ -458,8 +457,8 @@ if nav_sistema == "🎬 Carregar Jogo & Dados":
         elif creditos_atuais <= 0:
             st.error("❌ Créditos esgotados! Redirecionando para a loja de relatórios...")
             st.rerun()
-        elif not modelo:
-            st.error("❌ Chave API Gemini não configurada.")
+        elif not client:
+            st.error("❌ Cliente Gemini não configurado.")
         else:
             spinner_texto = "🤖 A processar motor avançado de IA tática..." if "Partida" in tipo_analise_contexto else "🤖 A auditar a sessão de treino com matriz metodológica..."
             with st.spinner(spinner_texto):
@@ -514,7 +513,10 @@ if nav_sistema == "🎬 Carregar Jogo & Dados":
                     """
                 
                 try:
-                    resposta = modelo.generate_content(prompt_analista)
+                    resposta = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=prompt_analista
+                    )
                     texto_completo = resposta.text
                     
                     st.markdown("### 📋 Relatório de Inteligência Gerado")
