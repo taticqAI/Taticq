@@ -29,12 +29,11 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- CONFIGURAÇÃO DA API DO GEMINI (ESTÁVEL E POTENTE) ---
-API_KEY_GEMINI = "AQ.Ab8RN6KjOzNnEovrneJGMP_kP6Lasz-yWg1NB5F4W4liJVwPYQ"
+# --- CONFIGURAÇÃO DA API DO GEMINI ---
+API_KEY_GEMINI = "AQ.Ab8RN6IJ_NULtRWMOWoqz8MwoME1igBTSs0O7Izkqwq2TIEizw"
 
 if API_KEY_GEMINI:
     genai.configure(api_key=API_KEY_GEMINI)
-    # A usar o modelo mais avançado e inteligente para relatórios UEFA Pro
     modelo = genai.GenerativeModel('gemini-1.5-pro')
 else:
     modelo = None
